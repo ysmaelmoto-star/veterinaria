@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase'
 import Login from './pages/Login'
 import Clientes from './pages/Clientes'
 import Mascotas from './pages/Mascotas'
+import Usuarios from './pages/Usuarios'
 
 const MENU: Record<string, string[]> = {
   administrador: ['Clientes', 'Mascotas', 'Usuarios'],
@@ -58,6 +59,8 @@ export default function App() {
           <Clientes />
         ) : pagina === 'Mascotas' ? (
           <Mascotas />
+        ) : pagina === 'Usuarios' ? (
+          <Usuarios />
         ) : (
           <h2>{pagina || 'Inicio'}</h2>
         )}
