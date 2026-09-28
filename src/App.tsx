@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
 import Login from './pages/Login'
+import Clientes from './pages/Clientes'
 
 const MENU: Record<string, string[]> = {
   administrador: ['Clientes', 'Mascotas', 'Usuarios'],
@@ -52,7 +53,7 @@ export default function App() {
         <button onClick={salir} style={{ marginLeft: 'auto' }}>Salir</button>
       </nav>
       <main style={{ padding: 20 }}>
-        <h2>{pagina || 'Inicio'}</h2>
+        {pagina === 'Clientes' ? <Clientes /> : <h2>{pagina || 'Inicio'}</h2>}
       </main>
     </div>
   )
