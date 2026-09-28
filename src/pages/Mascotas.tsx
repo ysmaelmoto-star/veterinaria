@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   listarMascotas,
@@ -6,9 +6,11 @@ import {
   listarEspecies,
   listarRazas,
   crearMascota,
+  actualizarMascota,
+  borrarMascota,
   subirFoto,
 } from '../services/mascotas'
-import type { Mascota } from '../services/mascotas'
+import type { Mascota, DatosMascota } from '../services/mascotas'
 
 type Opcion = { id: number; nombre: string }
 
@@ -28,6 +30,8 @@ export default function Mascotas() {
   const [foto, setFoto] = useState<File | null>(null)
   const [claveFoto, setClaveFoto] = useState(0)
   const [mensaje, setMensaje] = useState('')
+  const [editandoId, setEditandoId] = useState<number | null>(null)
+  const razaPendiente = useRef('')
 
   async function cargarLista() {
     const { data } = await listarMascotas()
@@ -47,16 +51,65 @@ export default function Mascotas() {
 
   useEffect(() => {
     async function cargarRazas() {
-      setRazaId('')
+      setRazaId(razaPendiente.current)
       if (!especieId) {
         setRazas([])
         return
       }
       const { data } = await listarRazas(Number(especieId))
       setRazas((data as Opcion[]) ?? [])
+      razaPendiente.current = ''
     }
     cargarRazas()
   }, [especieId])
+
+  function limpiar() {
+    razaPendiente.current = ''
+    setNombre('')
+    setClienteId('')
+    setEspecieId('')
+    setRazaId('')
+    setSexo('')
+    setNacimiento('')
+    setPeso('')
+    setFoto(null)
+    setClaveFoto((k) => k + 1)
+    setEditandoId(null)
+  }
+
+  function editar(m: Mascota) {
+    setEditandoId(m.id)
+    setClienteId(String(m.cliente_id))
+    setNombre(m.nombre)
+    if (String(m.especie_id) === especieId) {
+      setRazaId(String(m.raza_id))
+    } else {
+      razaPendiente.current = String(m.raza_id)
+      setEspecieId(String(m.especie_id))
+    }
+    setSexo(m.sexo)
+    setNacimiento(m.nacimiento)
+    setPeso(String(m.peso_kg))
+    setFoto(null)
+    setClaveFoto((k) => k + 1)
+    setMensaje('Editando mascota (si no eliges foto nueva, se queda la actual)')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  async function borrar(m: Mascota) {
+    if (!confirm('¿Borrar a ' + m.nombre + '?')) return
+    const { data, error } = await borrarMascota(m.id)
+    if (error) {
+      setMensaje('No se pudo borrar: ' + error.message)
+      return
+    }
+    if (!data || data.length === 0) {
+      setMensaje('No tienes permiso para borrar (solo el administrador)')
+      return
+    }
+    setMensaje('Mascota borrada')
+    cargarLista()
+  }
 
   async function guardar(e: FormEvent) {
     e.preventDefault()
@@ -72,7 +125,7 @@ export default function Mascotas() {
       fotoUrl = r.url
     }
 
-    const { error } = await crearMascota({
+    const datos: DatosMascota = {
       cliente_id: Number(clienteId),
       nombre: nombre.trim(),
       especie_id: Number(especieId),
@@ -80,22 +133,26 @@ export default function Mascotas() {
       sexo,
       nacimiento,
       peso_kg: Number(peso),
-      foto_url: fotoUrl,
-    })
+    }
+    if (fotoUrl) datos.foto_url = fotoUrl
+
+    let error: { message: string } | null
+    if (editandoId) {
+      const r = await actualizarMascota(editandoId, datos)
+      error = r.error
+      if (!error && (!r.data || r.data.length === 0)) {
+        return setMensaje('No tienes permiso para editar')
+      }
+    } else {
+      error = (await crearMascota(datos)).error
+    }
+
     if (error) {
       setMensaje('No se pudo guardar: ' + error.message)
       return
     }
-    setNombre('')
-    setClienteId('')
-    setEspecieId('')
-    setRazaId('')
-    setSexo('')
-    setNacimiento('')
-    setPeso('')
-    setFoto(null)
-    setClaveFoto(claveFoto + 1)
-    setMensaje('Mascota guardada')
+    setMensaje(editandoId ? 'Mascota actualizada' : 'Mascota guardada')
+    limpiar()
     cargarLista()
   }
 
@@ -137,13 +194,16 @@ export default function Mascotas() {
             onChange={(e) => setFoto(e.target.files?.[0] ?? null)}
           />
         </label>
-        <button type="submit">Guardar mascota</button>
+        <button type="submit">{editandoId ? 'Guardar cambios' : 'Guardar mascota'}</button>
+        {editandoId && (
+          <button type="button" onClick={() => { limpiar(); setMensaje('') }}>Cancelar</button>
+        )}
         {mensaje && <p>{mensaje}</p>}
       </form>
 
       <table style={{ width: '100%', textAlign: 'left' }}>
         <thead>
-          <tr><th>Foto</th><th>Mascota</th><th>Dueño</th><th>Especie</th><th>Raza</th><th>Sexo</th><th>Peso</th></tr>
+          <tr><th>Foto</th><th>Mascota</th><th>Dueño</th><th>Especie</th><th>Raza</th><th>Sexo</th><th>Peso</th><th></th></tr>
         </thead>
         <tbody>
           {lista.map((m) => (
@@ -159,6 +219,10 @@ export default function Mascotas() {
               <td>{m.razas?.nombre}</td>
               <td>{m.sexo}</td>
               <td>{m.peso_kg} kg</td>
+              <td>
+                <button onClick={() => editar(m)}>Editar</button>{' '}
+                <button onClick={() => borrar(m)}>Borrar</button>
+              </td>
             </tr>
           ))}
         </tbody>

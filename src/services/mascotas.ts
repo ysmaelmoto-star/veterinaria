@@ -2,6 +2,9 @@ import { supabase } from '../lib/supabase'
 
 export type Mascota = {
   id: number
+  cliente_id: number
+  especie_id: number
+  raza_id: number
   nombre: string
   sexo: string
   nacimiento: string
@@ -12,10 +15,21 @@ export type Mascota = {
   razas: { nombre: string } | null
 }
 
+export type DatosMascota = {
+  cliente_id: number
+  nombre: string
+  especie_id: number
+  raza_id: number
+  sexo: string
+  nacimiento: string
+  peso_kg: number
+  foto_url?: string | null
+}
+
 export async function listarMascotas() {
   return supabase
     .from('mascotas')
-    .select('id, nombre, sexo, nacimiento, peso_kg, foto_url, clientes(nombre), especies(nombre), razas(nombre)')
+    .select('id, cliente_id, especie_id, raza_id, nombre, sexo, nacimiento, peso_kg, foto_url, clientes(nombre), especies(nombre), razas(nombre)')
     .order('creado_en', { ascending: false })
 }
 
@@ -40,15 +54,14 @@ export async function subirFoto(archivo: File) {
   return { url: data.publicUrl, error: null }
 }
 
-export async function crearMascota(m: {
-  cliente_id: number
-  nombre: string
-  especie_id: number
-  raza_id: number
-  sexo: string
-  nacimiento: string
-  peso_kg: number
-  foto_url: string | null
-}) {
+export async function crearMascota(m: DatosMascota) {
   return supabase.from('mascotas').insert(m)
+}
+
+export async function actualizarMascota(id: number, m: DatosMascota) {
+  return supabase.from('mascotas').update(m).eq('id', id).select()
+}
+
+export async function borrarMascota(id: number) {
+  return supabase.from('mascotas').delete().eq('id', id).select()
 }
