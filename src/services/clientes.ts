@@ -21,3 +21,11 @@ export async function listarClientes(texto: string) {
 export async function crearCliente(c: Omit<Cliente, 'id'>) {
   return supabase.from('clientes').insert(c)
 }
+
+export async function actualizarCliente(id: number, c: Omit<Cliente, 'id'>) {
+  return supabase.from('clientes').update(c).eq('id', id).select()
+}
+
+export async function borrarCliente(id: number) {
+  return supabase.from('clientes').delete().eq('id', id).select()
+}
