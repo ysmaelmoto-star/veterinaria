@@ -6,6 +6,7 @@ import {
   listarEspecies,
   listarRazas,
   crearMascota,
+  subirFoto,
 } from '../services/mascotas'
 import type { Mascota } from '../services/mascotas'
 
@@ -24,6 +25,8 @@ export default function Mascotas() {
   const [sexo, setSexo] = useState('')
   const [nacimiento, setNacimiento] = useState('')
   const [peso, setPeso] = useState('')
+  const [foto, setFoto] = useState<File | null>(null)
+  const [claveFoto, setClaveFoto] = useState(0)
   const [mensaje, setMensaje] = useState('')
 
   async function cargarLista() {
@@ -60,6 +63,15 @@ export default function Mascotas() {
     setMensaje('')
     if (Number(peso) <= 0) return setMensaje('El peso debe ser mayor a 0')
 
+    let fotoUrl: string | null = null
+    if (foto) {
+      if (!foto.type.startsWith('image/')) return setMensaje('El archivo debe ser una imagen')
+      if (foto.size > 2 * 1024 * 1024) return setMensaje('La foto pesa más de 2 MB')
+      const r = await subirFoto(foto)
+      if (r.error) return setMensaje('No se pudo subir la foto: ' + r.error.message)
+      fotoUrl = r.url
+    }
+
     const { error } = await crearMascota({
       cliente_id: Number(clienteId),
       nombre: nombre.trim(),
@@ -68,6 +80,7 @@ export default function Mascotas() {
       sexo,
       nacimiento,
       peso_kg: Number(peso),
+      foto_url: fotoUrl,
     })
     if (error) {
       setMensaje('No se pudo guardar: ' + error.message)
@@ -80,6 +93,8 @@ export default function Mascotas() {
     setSexo('')
     setNacimiento('')
     setPeso('')
+    setFoto(null)
+    setClaveFoto(claveFoto + 1)
     setMensaje('Mascota guardada')
     cargarLista()
   }
@@ -113,17 +128,31 @@ export default function Mascotas() {
         </select>
         <input type="date" value={nacimiento} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setNacimiento(e.target.value)} required />
         <input type="number" step="0.1" min="0.1" placeholder="Peso en kg" value={peso} onChange={(e) => setPeso(e.target.value)} required />
+        <label>
+          Foto (opcional, máximo 2 MB)
+          <input
+            key={claveFoto}
+            type="file"
+            accept="image/*"
+            onChange={(e) => setFoto(e.target.files?.[0] ?? null)}
+          />
+        </label>
         <button type="submit">Guardar mascota</button>
         {mensaje && <p>{mensaje}</p>}
       </form>
 
       <table style={{ width: '100%', textAlign: 'left' }}>
         <thead>
-          <tr><th>Mascota</th><th>Dueño</th><th>Especie</th><th>Raza</th><th>Sexo</th><th>Peso</th></tr>
+          <tr><th>Foto</th><th>Mascota</th><th>Dueño</th><th>Especie</th><th>Raza</th><th>Sexo</th><th>Peso</th></tr>
         </thead>
         <tbody>
           {lista.map((m) => (
             <tr key={m.id}>
+              <td>
+                {m.foto_url && (
+                  <img src={m.foto_url} alt={m.nombre} style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6 }} />
+                )}
+              </td>
               <td>{m.nombre}</td>
               <td>{m.clientes?.nombre}</td>
               <td>{m.especies?.nombre}</td>
