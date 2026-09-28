@@ -6,6 +6,19 @@ type Perfil = { id: string; nombre: string; rol: string; activo: boolean }
 
 const ROLES = ['administrador', 'recepcionista', 'veterinario', 'inventario', 'grooming']
 
+async function leerError(error: unknown, general: string) {
+  const respuesta = (error as { context?: Response }).context
+  if (respuesta) {
+    try {
+      const j = await respuesta.json()
+      return (j.error as string) ?? general
+    } catch {
+      return general
+    }
+  }
+  return general
+}
+
 export default function Usuarios() {
   const [lista, setLista] = useState<Perfil[]>([])
   const [yo, setYo] = useState('')
@@ -15,6 +28,7 @@ export default function Usuarios() {
   const [rol, setRol] = useState('')
   const [mensaje, setMensaje] = useState('')
   const [guardando, setGuardando] = useState(false)
+  const [editandoId, setEditandoId] = useState<string | null>(null)
 
   async function cargar() {
     const { data } = await supabase
@@ -29,19 +43,20 @@ export default function Usuarios() {
     cargar()
   }, [])
 
-  async function cambiarRol(u: Perfil, nuevoRol: string) {
-    if (!confirm('¿Cambiar el rol de ' + u.nombre + ' a ' + nuevoRol + '?')) return
-    const { data, error } = await supabase
-      .from('perfiles')
-      .update({ rol: nuevoRol })
-      .eq('id', u.id)
-      .select()
-    if (error || !data || data.length === 0) {
-      setMensaje('No se pudo cambiar el rol')
-      return
-    }
-    setMensaje('Rol actualizado')
-    cargar()
+  function limpiar() {
+    setNombre('')
+    setCorreo('')
+    setClave('')
+    setRol('')
+    setEditandoId(null)
+  }
+
+  function editar(u: Perfil) {
+    setEditandoId(u.id)
+    setNombre(u.nombre)
+    setRol(u.rol)
+    setMensaje('Editando usuario (el correo y la contraseña no se cambian aquí)')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   async function alternar(u: Perfil) {
@@ -60,9 +75,37 @@ export default function Usuarios() {
     cargar()
   }
 
+  async function borrar(u: Perfil) {
+    if (!confirm('¿Borrar la cuenta de ' + u.nombre + '? No se puede deshacer.')) return
+    const { error } = await supabase.functions.invoke('borrar-usuario', { body: { id: u.id } })
+    if (error) {
+      setMensaje(await leerError(error, 'No se pudo borrar el usuario'))
+      return
+    }
+    setMensaje('Usuario borrado')
+    cargar()
+  }
+
   async function guardar(e: FormEvent) {
     e.preventDefault()
     setMensaje('')
+
+    if (editandoId) {
+      const { data, error } = await supabase
+        .from('perfiles')
+        .update({ nombre: nombre.trim(), rol })
+        .eq('id', editandoId)
+        .select()
+      if (error || !data || data.length === 0) {
+        setMensaje('No se pudo actualizar el usuario')
+        return
+      }
+      setMensaje('Usuario actualizado')
+      limpiar()
+      cargar()
+      return
+    }
+
     if (clave.length < 8) return setMensaje('La contraseña debe tener al menos 8 caracteres')
 
     setGuardando(true)
@@ -72,24 +115,11 @@ export default function Usuarios() {
     setGuardando(false)
 
     if (error) {
-      let texto = 'No se pudo crear el usuario'
-      const respuesta = (error as { context?: Response }).context
-      if (respuesta) {
-        try {
-          const j = await respuesta.json()
-          texto = j.error ?? texto
-        } catch {
-          // se queda el mensaje general
-        }
-      }
-      setMensaje(texto)
+      setMensaje(await leerError(error, 'No se pudo crear el usuario'))
       return
     }
 
-    setNombre('')
-    setCorreo('')
-    setClave('')
-    setRol('')
+    limpiar()
     setMensaje('Usuario creado')
     cargar()
   }
@@ -98,15 +128,24 @@ export default function Usuarios() {
     <div>
       <form onSubmit={guardar} style={{ display: 'grid', gap: 8, maxWidth: 360, margin: '0 auto 20px' }}>
         <input placeholder="Nombre completo" value={nombre} onChange={(e) => setNombre(e.target.value)} required />
-        <input type="email" placeholder="Correo" value={correo} onChange={(e) => setCorreo(e.target.value)} required autoComplete="off" />
-        <input type="password" placeholder="Contraseña (mínimo 8)" value={clave} onChange={(e) => setClave(e.target.value)} required autoComplete="new-password" />
-        <select value={rol} onChange={(e) => setRol(e.target.value)} required>
+        {!editandoId && (
+          <>
+            <input type="email" placeholder="Correo" value={correo} onChange={(e) => setCorreo(e.target.value)} required autoComplete="off" />
+            <input type="password" placeholder="Contraseña (mínimo 8)" value={clave} onChange={(e) => setClave(e.target.value)} required autoComplete="new-password" />
+          </>
+        )}
+        <select value={rol} onChange={(e) => setRol(e.target.value)} required disabled={editandoId === yo}>
           <option value="">Rol</option>
           {ROLES.map((r) => (
             <option key={r} value={r}>{r}</option>
           ))}
         </select>
-        <button type="submit" disabled={guardando}>{guardando ? 'Creando...' : 'Crear usuario'}</button>
+        <button type="submit" disabled={guardando}>
+          {editandoId ? 'Guardar cambios' : guardando ? 'Creando...' : 'Crear usuario'}
+        </button>
+        {editandoId && (
+          <button type="button" onClick={() => { limpiar(); setMensaje('') }}>Cancelar</button>
+        )}
         {mensaje && <p>{mensaje}</p>}
       </form>
 
@@ -118,21 +157,15 @@ export default function Usuarios() {
           {lista.map((u) => (
             <tr key={u.id}>
               <td>{u.nombre}</td>
-              <td>
-                <select
-                  value={u.rol}
-                  disabled={u.id === yo}
-                  onChange={(e) => cambiarRol(u, e.target.value)}
-                >
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </td>
+              <td>{u.rol}</td>
               <td>{u.activo ? 'Activo' : 'Inactivo'}</td>
               <td>
+                <button onClick={() => editar(u)}>Editar</button>{' '}
                 {u.id !== yo && (
-                  <button onClick={() => alternar(u)}>{u.activo ? 'Desactivar' : 'Activar'}</button>
+                  <>
+                    <button onClick={() => alternar(u)}>{u.activo ? 'Desactivar' : 'Activar'}</button>{' '}
+                    <button onClick={() => borrar(u)}>Borrar</button>
+                  </>
                 )}
               </td>
             </tr>
